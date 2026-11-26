@@ -1,123 +1,194 @@
+rom datetime import datetime
+from registro import generar_codigo
 
-from datetime import datetime
+
+def mostrar_puestos_disponibles(puestos):
+    """Muestra todos los puestos registrados."""
+    print("\nPuestos registrados disponibles:")
+    for puesto in puestos:
+        print(f"  - {puesto['codigo']}: {puesto['nombre']}")
+
+
+def mostrar_turnos_por_puesto(turnos, codigo_puesto):
+    """Muestra los turnos ya creados para un puesto específico."""
+    turnos_puesto = [t for t in turnos if t["codigo_puesto"] == codigo_puesto]
+    if turnos_puesto:
+        print(f"\nTurnos actuales en el puesto {codigo_puesto}:")
+        for t in turnos_puesto:
+            estado = f"Agente: {t['codigo_agente']}" if t["codigo_agente"] else "Sin asignar"
+            print(f"  - {t['codigo']} | Horario: {t['inicio']} - {t['fin']} ({estado})")
+    else:
+        print(f"\nEl puesto {codigo_puesto} aún no tiene turnos registrados.")
+
+
+def mostrar_agentes_disponibles(agentes):
+    """Muestra todos los agentes registrados."""
+    print("\nAgentes registrados disponibles:")
+    for agente in agentes:
+        print(f"  - {agente['codigo']}: {agente['nombres']} {agente['apellidos']}")
+
+
+def mostrar_turnos_disponibles(turnos):
+    """Muestra únicamente los turnos que aún no tienen agente asignado."""
+    disponibles = [t for t in turnos if t["codigo_agente"] == ""]
+    print("\nTurnos disponibles (sin agente asignado):")
+    if not disponibles:
+        print("  (Ninguno disponible)")
+    else:
+        for turno in disponibles:
+            print(
+                f"  - {turno['codigo']} | Puesto: {turno['codigo_puesto']} | "
+                f"Horario: {turno['inicio']} - {turno['fin']}"
+            )
+    return disponibles
+
+
+def convertir_a_minutos(hora_str):
+    """Valida formato HH:MM y convierte la hora a minutos desde medianoche."""
+    hora_dt = datetime.strptime(hora_str, "%H:%M")
+    return hora_dt.hour * 60 + hora_dt.minute
+
+
+def horarios_se_cruzan(inicio1, fin1, inicio2, fin2):
+    """Detecta cruce entre dos horarios HH:MM, incluyendo turnos nocturnos."""
+    a1 = convertir_a_minutos(inicio1)
+    a2 = convertir_a_minutos(fin1)
+    if a2 <= a1:
+        a2 += 1440
+
+    b1 = convertir_a_minutos(inicio2)
+    b2 = convertir_a_minutos(fin2)
+    if b2 <= b1:
+        b2 += 1440
+
+    return (
+        (a1 < b2 and b1 < a2)
+        or (a1 + 1440 < b2 and b1 < a2 + 1440)
+        or (a1 < b2 + 1440 and b1 + 1440 < a2)
+    )
 
 
 def crear_turno(turnos, puestos):
+    """Crea un turno permitiendo que un mismo puesto tenga múltiples turnos."""
     print("\n--- CREAR TURNO ---")
-    codigo = input("Código del turno: ").strip().upper()
-    codigo_puesto = input("Código del puesto: ").strip().upper()
-    fecha = input("Fecha (DD-MM-AAAA): ").strip()
-
-    if not codigo or not codigo_puesto:
-        print("Error: los códigos son obligatorios.")
+    if not puestos:
+        print("Error: debe registrar al menos un puesto antes de crear turnos.")
         return
 
-    for turno in turnos:
-        if turno["codigo"] == codigo:
-            print("Error: ese código de turno ya existe.")
-            return
+    codigo = generar_codigo(turnos, "TU")
+    print(f"Código de turno asignado automáticamente: {codigo}")
 
-    if not any(puesto["codigo"] == codigo_puesto for puesto in puestos):
-        print("Error: el puesto no está registrado.")
-        return
+    mostrar_puestos_disponibles(puestos)
+    while True:
+        codigo_puesto = input("\nIngrese el código del puesto: ").strip().upper()
+        if not codigo_puesto:
+            print("Error: el código del puesto es obligatorio.")
+            mostrar_puestos_disponibles(puestos)
+        elif not any(puesto["codigo"] == codigo_puesto for puesto in puestos):
+            print(f"Error: el código '{codigo_puesto}' no está registrado.")
+            mostrar_puestos_disponibles(puestos)
+        else:
+            break
 
-    try:
-        datetime.strptime(fecha, "%d-%m-%Y")
-        inicio = int(input("Hora de inicio (0 a 23): "))
-        fin = int(input("Hora de fin (1 a 24): "))
-    except ValueError:
-        print("Error: fecha u horas incorrectas.")
-        return
+    mostrar_turnos_por_puesto(turnos, codigo_puesto)
 
-    if not (0 <= inicio < fin <= 24):
-        print("Error: el turno debe empezar y terminar el mismo día.")
-        return
+    while True:
+        inicio = input("\nHora de inicio (HH:MM, ej. 08:30): ").strip()
+        try:
+            convertir_a_minutos(inicio)
+            break
+        except ValueError:
+            print("Error: hora de inicio inválida. Use el formato HH:MM (00:00 a 23:59).")
 
-    for turno in turnos:
-        mismo_puesto = turno["codigo_puesto"] == codigo_puesto
-        misma_fecha = turno["fecha"] == fecha
-        se_superponen = inicio < turno["fin"] and turno["inicio"] < fin
-        if mismo_puesto and misma_fecha and se_superponen:
-            print("Error: el puesto ya tiene un turno en ese horario.")
-            return
+    while True:
+        fin = input("Hora de fin (HH:MM, ej. 17:45): ").strip()
+        try:
+            convertir_a_minutos(fin)
+        except ValueError:
+            print("Error: hora de fin inválida. Use el formato HH:MM (00:00 a 23:59).")
+            continue
+
+        if fin == inicio:
+            print("Error: la hora de fin no puede ser igual a la hora de inicio.")
+            continue
+
+        break
 
     turnos.append({
         "codigo": codigo,
         "codigo_puesto": codigo_puesto,
-        "fecha": fecha,
         "inicio": inicio,
         "fin": fin,
         "codigo_agente": ""
     })
-    print("Turno creado correctamente.")
-
-
-def validar_asignacion(agentes, turnos, codigo_agente, codigo_turno):
-    existe_agente = False
-    for agente in agentes:
-        if agente["codigo"] == codigo_agente:
-            existe_agente = True
-            break
-
-    if not existe_agente:
-        return False, "El agente no está registrado."
-
-    turno_elegido = None
-    for turno in turnos:
-        if turno["codigo"] == codigo_turno:
-            turno_elegido = turno
-            break
-
-    if turno_elegido is None:
-        return False, "El turno no existe."
-
-    if turno_elegido["codigo_agente"] != "":
-        return False, "El turno ya tiene un agente asignado."
-
-    for turno in turnos:
-        mismo_agente = turno["codigo_agente"] == codigo_agente
-        misma_fecha = turno["fecha"] == turno_elegido["fecha"]
-        se_superponen = (
-            turno_elegido["inicio"] < turno["fin"]
-            and turno["inicio"] < turno_elegido["fin"]
-        )
-        if mismo_agente and misma_fecha and se_superponen:
-            return False, "El agente tiene otro turno en ese horario."
-
-    return True, "Asignación válida."
+    print(f"Turno {codigo} creado correctamente para el puesto {codigo_puesto} ({inicio} - {fin}).")
 
 
 def asignar_agente(agentes, turnos):
+    """Asigna un agente a un turno disponible evitando cruces horarios en el mismo agente."""
     print("\n--- ASIGNAR AGENTE ---")
-    codigo_agente = input("Código del agente: ").strip().upper()
-    codigo_turno = input("Código del turno: ").strip().upper()
-
-    valido, mensaje = validar_asignacion(
-        agentes, turnos, codigo_agente, codigo_turno
-    )
-    if not valido:
-        print("Asignación rechazada:", mensaje)
+    if not agentes:
+        print("Error: no hay agentes registrados en el sistema.")
         return
 
-    for turno in turnos:
-        if turno["codigo"] == codigo_turno:
-            turno["codigo_agente"] = codigo_agente
+    disponibles = mostrar_turnos_disponibles(turnos)
+    if not disponibles:
+        print("Error: todos los turnos registrados ya tienen un agente asignado.")
+        return
+
+    mostrar_agentes_disponibles(agentes)
+
+    while True:
+        codigo_agente = input("\nIngrese el código del agente: ").strip().upper()
+        if not codigo_agente:
+            print("Error: debe ingresar un código de agente.")
+            mostrar_agentes_disponibles(agentes)
+        elif not any(agente["codigo"] == codigo_agente for agente in agentes):
+            print(f"Error: el agente '{codigo_agente}' no está registrado.")
+            mostrar_agentes_disponibles(agentes)
+        else:
             break
 
-    print("Agente asignado correctamente.")
+    while True:
+        codigo_turno = input("\nIngrese el código del turno disponible: ").strip().upper()
+        turno_elegido = None
+        for turno in turnos:
+            if turno["codigo"] == codigo_turno:
+                turno_elegido = turno
+                break
 
-
-def consultar_cobertura(turnos):
-    print("\n--- TURNOS SIN COBERTURA ---")
-    encontrados = 0
-    for turno in turnos:
-        if turno["codigo_agente"] == "":
+        if not codigo_turno:
+            print("Error: debe ingresar un código de turno.")
+            mostrar_turnos_disponibles(turnos)
+        elif turno_elegido is None:
+            print(f"Error: el turno '{codigo_turno}' no existe.")
+            mostrar_turnos_disponibles(turnos)
+        elif turno_elegido["codigo_agente"] != "":
             print(
-                f"Turno: {turno['codigo']} | Puesto: {turno['codigo_puesto']} | "
-                f"Fecha: {turno['fecha']} | {turno['inicio']}:00 - {turno['fin']}:00"
+                f"Error: el turno '{codigo_turno}' ya está registrado con el agente "
+                f"{turno_elegido['codigo_agente']}."
             )
-            encontrados += 1
+            mostrar_turnos_disponibles(turnos)
+        else:
+            cruce_agente = None
+            for turno in turnos:
+                if turno["codigo_agente"] == codigo_agente and horarios_se_cruzan(
+                    turno_elegido["inicio"],
+                    turno_elegido["fin"],
+                    turno["inicio"],
+                    turno["fin"]
+                ):
+                    cruce_agente = turno
+                    break
 
-    if encontrados == 0:
-        print("No hay turnos pendientes de cobertura.")
-      
+            if cruce_agente is not None:
+                print(
+                    f"Error: el agente {codigo_agente} ya cubre el turno {cruce_agente['codigo']} "
+                    f"({cruce_agente['inicio']} - {cruce_agente['fin']}) en ese horario."
+                )
+                mostrar_turnos_disponibles(turnos)
+            else:
+                break
+
+    turno_elegido["codigo_agente"] = codigo_agente
+    print(f"Agente {codigo_agente} asignado correctamente al turno {codigo_turno}.")
